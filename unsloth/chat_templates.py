@@ -44,6 +44,112 @@ standardize_sharegpt = standardize_data_formats
 CHAT_TEMPLATES = {}
 DEFAULT_SYSTEM_MESSAGE = {}
 
+
+
+
+
+
+# =========================================== sarashina22
+# Obtained via
+# print(tokenizer.chat_template.replace("}\n", "####").replace("\n", "\\n").replace("####", "}\n"))
+sarashina22_template = \
+"""\n{%- set user_messages = messages | selectattr('role', 'equalto', 'user') | list %}
+{%- macro output_available_tools(tools, message) %}
+{%- if tools and (message == user_messages[-1]) %}
+    {{- '<|available_tools|>[' }}
+    {%- for tool in tools %}
+        {%- set tool = tool.function %}
+        {{- "{" }}
+        {%- for key, val in tool.items() if key != "return" %}
+            {%- if val is string %}
+                {{- "'" + key + "': '" + val + "'" }}
+            {%- else %}
+                {{- "'" + key + "': " + val|string }}
+            {%- endif %}
+            {%- if not loop.last %}
+                {{- ", " }}
+            {%- endif %}
+        {%- endfor %}
+        {{- "}" }}
+        {%- if not loop.last %}
+            {{- ", " }}
+        {%- else %}
+            {{- "]" }}
+        {%- endif %}
+    {%- endfor %}
+    {{- eos_token -}}
+{%- endif %}
+{%- endmacro %}
+\n{%- macro output_tool_results(tool_results) %}
+{{- '<|tool_results|>[' }}
+{%- for tool_result in tool_results %}
+    {{- "{'content': " + tool_result.content|string + ", 'call_id': '" + tool_result.call_id + "'}" }}
+{%- endfor %}
+{{- ']' }}
+{{- eos_token -}}
+{%- endmacro %}
+\n{%- macro output_tool_calls(tool_calls) %}
+{{- '<|tool_calls|>[' }}
+{%- for tool_call in tool_calls %}
+    {{- "{'id': '" + tool_call.id + "', 'name': '" + tool_call.name + "', 'arguments': " + tool_call.arguments|string + '}' }}
+{%- endfor %}
+{{- ']' }}
+{%- endmacro %}
+\n{%- for message in messages %}
+    {%- if message['role'] == 'user' %}
+        {%- if tools is defined %}
+            {{- output_available_tools(tools, message) }}
+        {%- endif %}
+        {{- '<|user|>' + message['content'] + eos_token -}}
+    {%- elif message['role'] == 'system' %}
+        {{- '<|system|>' + message['content'] + eos_token -}}
+    {%- elif message['role'] == 'assistant' %}
+        {% set assistant_content = "" %}
+        {%- if message.content is defined %}
+            {% set assistant_content = message.content %}
+        {%- endif %}
+        {%- if message.tool_calls is defined and message.tool_calls -%}
+            {{- '<|assistant|>' + assistant_content + output_tool_calls(message['tool_calls']) + eos_token -}}
+        {%- else %}
+            {{- '<|assistant|>' + assistant_content + eos_token }}
+        {%- endif %}
+    {%- elif message['role'] == 'tool_results' %}
+        {{- output_tool_results(message.tool_results) }}
+    {%- endif %}
+{%- if loop.last and add_generation_prompt -%}
+  {{- '<|assistant|>' -}}
+{%- endif -%}
+{%- endfor %}
+"""
+
+# Ollama from https://ollama.com/library/gemma3/blobs/e0a42594d802
+sarashina22_ollama = \
+'''
+FROM {__FILE_LOCATION__}
+TEMPLATE """{{ if .System }}<|system|>{{ .System }}</s>{{ end }}{{ if .Prompt }}<|user|>{{ .Prompt }}</s>{{ end }}<|assistant|>{{ .Response }}</s>"""
+PARAMETER stop "<|system|>"
+PARAMETER stop "<|user|>"
+PARAMETER stop "<|assistant|>"
+PARAMETER temperature 0.1
+PARAMETER min_p 0.0
+PARAMETER top_k 64
+PARAMETER top_p 0.95
+'''
+
+sarashina22_template_eos_token = "<s>"
+CHAT_TEMPLATES["sarashina22"] = (sarashina22_template, sarashina22_template_eos_token, False, sarashina22_ollama,)
+DEFAULT_SYSTEM_MESSAGE["sarashina22"] = None # No system message in Gemma-3
+
+CHAT_TEMPLATES["sarashina-2-2"] = (sarashina22_template, sarashina22_template_eos_token, False, sarashina22_ollama,)
+DEFAULT_SYSTEM_MESSAGE["sarashina-2-2"] = None # No system message in Gemma-3
+
+
+
+
+
+
+
+
 # =========================================== Unsloth
 # Unsloth efficient template leverages from Zephyr
 unsloth_template = \
